@@ -9,7 +9,7 @@ import numpy as np
 import math
 
 from typing import Union
-import Curves
+import curves
 
 
 __all__ = ['save_deit_t16_224', 'save_deit_s16_224', 'save_deit_b16_224']
