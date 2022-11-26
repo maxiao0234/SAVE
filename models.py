@@ -15,21 +15,29 @@ import curves
 __all__ = ['save_deit_t16_224', 'save_deit_s16_224', 'save_deit_b16_224']
 
 
-PosEncoding = True  # options: [True, False]
+PosEncoding = True  # Whether to use absolute position encoding. Options: [True, False]
 
 
 class SAVEConfig:
-    """
-    options: [None, 'sequence', 'extension', 'hilbert', 'extension_augment', 'hilbert_augment']
+    """The SAVE Configurations. This module assigns SAVE mode to each group of vectors.
+
+    Components:
+        ABS: SAVE mode for absolute position encoding.
+        Q: SAVE mode for Q.
+        K: SAVE mode for K.
+        V: SAVE mode for V.
+
+    Mode Options: [None, 'sequence', 'extension', 'hilbert', 'extension_augment', 'hilbert_augment']
     """
     ABS = None
-    Q = 'hilbert_augment'
-    K = 'hilbert_augment'
-    V = 'hilbert_augment'
+    Q = 'hilbert'
+    K = None
+    V = None
 
 
-class DeitSAVE(VisionTransformer):
-
+class SAVEDeiT(VisionTransformer):
+    """The DeiT backbone using SAVE
+    """
     def __init__(self, img_size=224, patch_size=16,
                  embed_dim=768, depth=12, num_heads=12, qkv_bias=True, attn_drop_rate=0.1,
                  drop_rate=0., **kwargs):
@@ -42,7 +50,7 @@ class DeitSAVE(VisionTransformer):
         if not PosEncoding:
             self.pos_embed = None
 
-        self.sa_abs_e = SpatialAggregationEncoding(hw_shape, SAVEConfig.ABS, embed_dim)
+        self.sa_abs_e = SpatialAggregationVectorEncoding(hw_shape, SAVEConfig.ABS, embed_dim)
 
         for i in range(depth):
             self.blocks[i].attn = Attention(hw_shape,
@@ -82,9 +90,9 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        self.sa_q_e = SpatialAggregationEncoding(size, SAVEConfig.Q, dim, skip=1, separable=True)
-        self.sa_k_e = SpatialAggregationEncoding(size, SAVEConfig.K, dim, skip=1, separable=True)
-        self.sa_v_e = SpatialAggregationEncoding(size, SAVEConfig.V, dim, skip=1, separable=True)
+        self.sa_q_e = SpatialAggregationVectorEncoding(size, SAVEConfig.Q, dim, skip=1, separable=True)
+        self.sa_k_e = SpatialAggregationVectorEncoding(size, SAVEConfig.K, dim, skip=1, separable=True)
+        self.sa_v_e = SpatialAggregationVectorEncoding(size, SAVEConfig.V, dim, skip=1, separable=True)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -106,21 +114,21 @@ class Attention(nn.Module):
         return x
 
 
-class Aggregation(nn.Module):
-    def __init__(self, spatial_table, anchor_weights, weight_length, dim):
-        super().__init__()
-        self.spatial_table = spatial_table
-        self.anchor_weights = anchor_weights
-        self.spatial_parameters = nn.Parameter(torch.empty(weight_length, dim))
-        trunc_normal_(self.spatial_parameters, std=.02)
+class SpatialAggregationVectorEncoding(nn.Module):
+    """Base class for SAVE. This block enables vectors to
+    aggregate with respect to the given SAVE mode.
 
-    def forward(self, x):
-        trans_mat = torch.einsum('p q n, n k -> p q k', self.spatial_table, self.spatial_parameters) + self.anchor_weights
-        x = torch.einsum('p q k, b q k -> b p k', trans_mat, x)
-        return x
+    Input (vector tensor): Input tokens, Q, K, or V.
+    Output (vector tensor): Aggregated vectors.
 
-
-class SpatialAggregationEncoding(nn.Module):
+    Args:
+        hw_shape: Shape of input except class token.
+        mode: Config for SAVE mode. Default: None, which means not using SAVE.
+        dim: Dimensions of each position to aggregate.
+        separable: Whether to use different parameters for each head.
+        skip: Whether to skip the class token. Default: None. The int value
+            means skipping the first which. To skip class token, specify 1.
+    """
     def __init__(self, hw_shape, mode=None, dim=1, separable=True, skip: Union[None, int]=None):
         super().__init__()
         self.hw_shape = hw_shape
@@ -132,19 +140,22 @@ class SpatialAggregationEncoding(nn.Module):
 
         if mode is not None:
             indices, values, weight_length, order = getattr(self, f"_spatial_{mode}")()
-            spatial_table = torch.sparse_coo_tensor(indices=torch.tensor(indices).transpose(0, 1),
-                                                    values=torch.tensor(values).float(),
-                                                    size=[self.length, self.length, weight_length]).to_dense()
+            setattr(self, 'spatial_table',
+                    torch.sparse_coo_tensor(indices=torch.tensor(indices).transpose(0, 1),
+                                            values=torch.tensor(values).float(),
+                                            size=[self.length, self.length, weight_length]).to_dense())
 
             anchor_indices = [[i, i, j] for i in range(self.length) for j in range(dim)]
-            anchor_weights = torch.sparse_coo_tensor(indices=torch.tensor(anchor_indices).transpose(0, 1),
-                                                     values=torch.ones(len(anchor_indices)).float(),
-                                                     size=[self.length, self.length, dim]).to_dense()
+            setattr(self, 'anchor_weights',
+                    torch.sparse_coo_tensor(indices=torch.tensor(anchor_indices).transpose(0, 1),
+                                            values=torch.ones(len(anchor_indices)).float(),
+                                            size=[self.length, self.length, dim]).to_dense())
 
-            aggregation = []
+            self.order = order
             for i in range(order):
-                aggregation.append(Aggregation(spatial_table, anchor_weights, weight_length, dim))
-            self.aggregation = nn.Sequential(*aggregation)
+                spatial_parameters = nn.Parameter(torch.zeros(weight_length, dim))
+                setattr(self, f'spatial_parameters_{i}', spatial_parameters)
+                trunc_normal_(getattr(self, f'spatial_parameters_{i}'), std=.02)
 
     def _rank2pos(self, rank):
         return rank // self.hw_shape[1], rank % self.hw_shape[1]
@@ -331,10 +342,10 @@ class SpatialAggregationEncoding(nn.Module):
         indices = []
         values = []
 
-        locs_top = Curves.hilbertCurve(curve_iteration, rotation='topReverse')
-        locs_bottom = Curves.hilbertCurve(curve_iteration, rotation='bottomReverse')
-        locs_left = Curves.hilbertCurve(curve_iteration, rotation='left')
-        locs_right = Curves.hilbertCurve(curve_iteration, rotation='right')
+        locs_top = curves.hilbertCurve(curve_iteration, rotation='topReverse')
+        locs_bottom = curves.hilbertCurve(curve_iteration, rotation='bottomReverse')
+        locs_left = curves.hilbertCurve(curve_iteration, rotation='left')
+        locs_right = curves.hilbertCurve(curve_iteration, rotation='right')
         curve_length = len(locs_top)
 
         for rank in range(self.length):
@@ -383,10 +394,10 @@ class SpatialAggregationEncoding(nn.Module):
     def _spatial_hilbert_augment(self, curve_iteration=2, norm_scale=1):
         indices, values, weight_length, order = self._spatial_hilbert(curve_iteration, norm_scale)
 
-        locs_top = Curves.hilbertCurve(curve_iteration, rotation='topReverse')
-        locs_bottom = Curves.hilbertCurve(curve_iteration, rotation='bottomReverse')
-        locs_left = Curves.hilbertCurve(curve_iteration, rotation='left')
-        locs_right = Curves.hilbertCurve(curve_iteration, rotation='right')
+        locs_top = curves.hilbertCurve(curve_iteration, rotation='topReverse')
+        locs_bottom = curves.hilbertCurve(curve_iteration, rotation='bottomReverse')
+        locs_left = curves.hilbertCurve(curve_iteration, rotation='left')
+        locs_right = curves.hilbertCurve(curve_iteration, rotation='right')
         curve_length = len(locs_top)
 
         dist = 1 / norm_scale
@@ -423,6 +434,13 @@ class SpatialAggregationEncoding(nn.Module):
         weight_length = weight_length + curve_length * 4
         return indices, values, weight_length, order
 
+    def aggregation(self, x):
+        for i in range(self.order):
+            spatial_parameters = getattr(self, f'spatial_parameters_{i}')
+            trans_mat = torch.einsum('p q n, n k -> p q k', self.spatial_table, spatial_parameters) + self.anchor_weights
+            x = torch.einsum('p q k, b q k -> b p k', trans_mat, x)
+        return x
+
     def forward(self, x):
         if self.mode is not None:
             if self.skip is not None:
@@ -449,7 +467,7 @@ class SpatialAggregationEncoding(nn.Module):
 
 @register_model
 def save_deit_t16_224(pretrained=False, **kwargs):
-    model = DeitSAVE(img_size=224,
+    model = SAVEDeiT(img_size=224,
         patch_size=16, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     model.default_cfg = _cfg()
@@ -458,7 +476,7 @@ def save_deit_t16_224(pretrained=False, **kwargs):
 
 @register_model
 def save_deit_s16_224(pretrained=False, **kwargs):
-    model = DeitSAVE(img_size=224,
+    model = SAVEDeiT(img_size=224,
         patch_size=16, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     model.default_cfg = _cfg()
@@ -467,7 +485,7 @@ def save_deit_s16_224(pretrained=False, **kwargs):
 
 @register_model
 def save_deit_b16_224(pretrained=False, **kwargs):
-    model = DeitSAVE(img_size=224,
+    model = SAVEDeiT(img_size=224,
         patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     model.default_cfg = _cfg()
