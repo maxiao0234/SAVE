@@ -11,7 +11,7 @@ This repository contains pytorch supported code and configuration of the propose
 ## Introduction
 
 ## Classification
-This implementation is based on the [Deit backbone](#https://github.com/facebookresearch/deit).
+This implementation is based on the [Deit](https://github.com/facebookresearch/deit) backbone.
 
 
 ## Citing
