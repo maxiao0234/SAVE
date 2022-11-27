@@ -4,8 +4,12 @@ This repository contains pytorch supported code and configuration of the propose
 
 ## Contents
 - [Introduction](#Introduction)
+- [Classification](#Classification)
+- [Citing](#Citing)
 
-## Training
+## Introduction
+
+## Classification
 
 ## Citing
-- ToDo
+- TO DO
