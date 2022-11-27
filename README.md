@@ -10,6 +10,8 @@ This repository contains pytorch supported code and configuration of the propose
 
 ## Introduction
 
+<img src="figs/fig1.png">
+
 ## Classification
 This implementation is based on the [Deit](https://github.com/facebookresearch/deit) backbone.
 
