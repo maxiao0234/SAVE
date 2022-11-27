@@ -18,9 +18,7 @@ To modify the SAVE configurations, go to `models.py`.
 
 We provide an example in this section
 
-First, assign `“extension”` to `ABS`.
-
-Then, do:
+First, assign `“extension”` to `ABS`. Then, do:
 
 ```
 python models.py
