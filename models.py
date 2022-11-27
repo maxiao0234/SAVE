@@ -15,7 +15,7 @@ import curves
 __all__ = ['save_deit_t16_224', 'save_deit_s16_224', 'save_deit_b16_224']
 
 
-PosEncoding = True  # Whether to use absolute position encoding. Options: [True, False]
+PosEncoding = False  # Whether to use absolute position encoding. Options: [True, False]
 
 
 class SAVEConfig:
@@ -90,9 +90,9 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        self.sa_q_e = SpatialAggregationVectorEncoding(size, SAVEConfig.Q, dim, skip=1, separable=True)
-        self.sa_k_e = SpatialAggregationVectorEncoding(size, SAVEConfig.K, dim, skip=1, separable=True)
-        self.sa_v_e = SpatialAggregationVectorEncoding(size, SAVEConfig.V, dim, skip=1, separable=True)
+        self.sa_q_e = SpatialAggregationVectorEncoding(size, SAVEConfig.Q, head_dim, skip=1, separable=False)
+        self.sa_k_e = SpatialAggregationVectorEncoding(size, SAVEConfig.K, head_dim, skip=1, separable=False)
+        self.sa_v_e = SpatialAggregationVectorEncoding(size, SAVEConfig.V, head_dim, skip=1, separable=False)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -140,18 +140,21 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         if mode is not None:
             indices, values, weight_length, order = getattr(self, f"_spatial_{mode}")()
-            setattr(self, 'spatial_table',
-                    torch.sparse_coo_tensor(indices=torch.tensor(indices).transpose(0, 1),
-                                            values=torch.tensor(values).float(),
-                                            size=[self.length, self.length, weight_length]).to_dense())
+            spatial_table = torch.sparse_coo_tensor(indices=torch.tensor(indices).transpose(0, 1),
+                                                    values=torch.tensor(values).float(),
+                                                    size=[self.length, self.length, weight_length],
+                                                    ).to_dense()
+            self.register_buffer('spatial_table', spatial_table)
 
             anchor_indices = [[i, i, j] for i in range(self.length) for j in range(dim)]
-            setattr(self, 'anchor_weights',
-                    torch.sparse_coo_tensor(indices=torch.tensor(anchor_indices).transpose(0, 1),
-                                            values=torch.ones(len(anchor_indices)).float(),
-                                            size=[self.length, self.length, dim]).to_dense())
+            anchor_weights = torch.sparse_coo_tensor(indices=torch.tensor(anchor_indices).transpose(0, 1),
+                                                     values=torch.ones(len(anchor_indices)).float(),
+                                                     size=[self.length, self.length, dim],
+                                                     ).to_dense()
+            self.register_buffer('anchor_weights', anchor_weights)
 
             self.order = order
+            self.weight_length = weight_length
             for i in range(order):
                 spatial_parameters = nn.Parameter(torch.zeros(weight_length, dim))
                 setattr(self, f'spatial_parameters_{i}', spatial_parameters)
@@ -276,7 +279,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(num_stride):
+            for stride in range(1, num_stride):
                 dist = math.exp((- stride ** 2 / (num_stride ** 2))) / norm_scale
                 top = self._shift(rank, stride, 'top')
                 bottom = self._shift(rank, stride, 'bottom')
@@ -309,7 +312,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
         dist = 1 / norm_scale
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(num_stride):
+            for stride in range(1, num_stride):
                 top = self._shift(rank, stride, 'top')
                 bottom = self._shift(rank, stride, 'bottom')
                 left = self._shift(rank, stride, 'left')
@@ -350,7 +353,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(curve_length):
+            for stride in range(1, curve_length):
                 dist = ((curve_length - stride) / curve_length) / norm_scale
                 dist_revise = (stride / curve_length) / norm_scale
 
@@ -403,7 +406,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
         dist = 1 / norm_scale
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(curve_length):
+            for stride in range(1, curve_length):
                 top_h = h + locs_top[stride][1] - locs_top[0][1]
                 top_w = w + locs_top[stride][0] - locs_top[0][0]
                 left_h = h + locs_left[stride][1] - locs_left[0][1]
@@ -458,7 +461,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
                     img_vectors = x[:, self.skip:, :]
                     img_vectors = self.aggregation(img_vectors)
                     x = torch.cat((skip_vectors, img_vectors), dim=1)
-                    x = x.reshape(B, C, L, N).contiguous()
+                    x = x.reshape(B, N, L, C).contiguous()
             else:
                 x = self.aggregation(x)
 
