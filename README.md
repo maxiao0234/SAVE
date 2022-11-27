@@ -12,6 +12,8 @@ This implementation is based on the [Deit](https://github.com/facebookresearch/d
 python -m torch.distributed.launch --nproc_per_node=8 --use_env main.py --model save_deit_t16_224 --batch-size 64
 ```
 
+To modify the SAVE configurations, go to `models.py`.
+
 ## Visualization for one anchor
 
 We provide an example in this section
@@ -43,8 +45,6 @@ Print the Gaussian kernel of Vertical Extension mode at a specific position:
  [ 0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0. ]]
 ```
 where the `-1.` indicates the anchor, and the others are kept to one decimal place. 
-
-To modify the SAVE configurations, go to `models.py`.
 
 ## Citing
 - TO DO
