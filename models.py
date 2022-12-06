@@ -15,7 +15,7 @@ import curves
 __all__ = ['save_deit_t16_224', 'save_deit_s16_224', 'save_deit_b16_224']
 
 
-PosEncoding = False  # Whether to use absolute position encoding. Options: [True, False]
+PosEncoding = True  # Whether to use absolute position encoding. Options: [True, False]
 
 
 class SAVEConfig:
@@ -30,7 +30,7 @@ class SAVEConfig:
     Mode Options: [None, 'sequence', 'extension', 'hilbert', 'extension_augment', 'hilbert_augment']
     """
     ABS = None
-    Q = 'hilbert'
+    Q = 'hilbert_augment'
     K = None
     V = None
 
@@ -79,7 +79,7 @@ class SAVEDeiT(VisionTransformer):
 
 
 class Attention(nn.Module):
-    def __init__(self, size, dim=1, num_heads=8, qkv_bias=False, attn_drop=0.1, proj_drop=0.):
+    def __init__(self, hw_shape, dim=1, num_heads=8, qkv_bias=False, attn_drop=0.1, proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -90,9 +90,9 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        self.sa_q_e = SpatialAggregationVectorEncoding(size, SAVEConfig.Q, head_dim, skip=1, separable=False)
-        self.sa_k_e = SpatialAggregationVectorEncoding(size, SAVEConfig.K, head_dim, skip=1, separable=False)
-        self.sa_v_e = SpatialAggregationVectorEncoding(size, SAVEConfig.V, head_dim, skip=1, separable=False)
+        self.sa_q_e = SpatialAggregationVectorEncoding(hw_shape, SAVEConfig.Q, head_dim, skip=1, separable=False)
+        self.sa_k_e = SpatialAggregationVectorEncoding(hw_shape, SAVEConfig.K, head_dim, skip=1, separable=False)
+        self.sa_v_e = SpatialAggregationVectorEncoding(hw_shape, SAVEConfig.V, head_dim, skip=1, separable=False)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -140,25 +140,24 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         if mode is not None:
             indices, values, weight_length, order = getattr(self, f"_spatial_{mode}")()
-            spatial_table = torch.sparse_coo_tensor(indices=torch.tensor(indices).transpose(0, 1),
-                                                    values=torch.tensor(values).float(),
-                                                    size=[self.length, self.length, weight_length],
-                                                    ).to_dense()
-            self.register_buffer('spatial_table', spatial_table)
+            self.register_buffer('spatial_table',
+                                 torch.sparse_coo_tensor(indices=torch.tensor(indices).transpose(0, 1),
+                                                         values=torch.tensor(values).float(),
+                                                         size=[self.length, self.length, weight_length],
+                                                         ).to_dense())
 
             anchor_indices = [[i, i, j] for i in range(self.length) for j in range(dim)]
-            anchor_weights = torch.sparse_coo_tensor(indices=torch.tensor(anchor_indices).transpose(0, 1),
-                                                     values=torch.ones(len(anchor_indices)).float(),
-                                                     size=[self.length, self.length, dim],
-                                                     ).to_dense()
-            self.register_buffer('anchor_weights', anchor_weights)
+            self.register_buffer('anchor_weights',
+                                 torch.sparse_coo_tensor(indices=torch.tensor(anchor_indices).transpose(0, 1),
+                                                         values=torch.ones(len(anchor_indices)).float(),
+                                                         size=[self.length, self.length, dim],
+                                                         ).to_dense())
 
             self.order = order
             self.weight_length = weight_length
             for i in range(order):
-                spatial_parameters = nn.Parameter(torch.zeros(weight_length, dim))
-                setattr(self, f'spatial_parameters_{i}', spatial_parameters)
-                trunc_normal_(getattr(self, f'spatial_parameters_{i}'), std=.02)
+                setattr(self, f'spatial_parameters_{i}', nn.Parameter(torch.empty(weight_length, dim)))
+                trunc_normal_(getattr(self, f'spatial_parameters_{i}'))
 
     def _rank2pos(self, rank):
         return rank // self.hw_shape[1], rank % self.hw_shape[1]
@@ -251,9 +250,11 @@ class SpatialAggregationVectorEncoding(nn.Module):
             return False
         return True
 
-    def _spatial_sequence(self, num_stride=8, norm_scale=1):
+    def _spatial_sequence(self, num_stride=8):
         order = 1
         weight_length = num_stride * 2
+        norm_scale = num_stride * 2
+
         indices = []
         values = []
 
@@ -271,15 +272,17 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         return indices, values, weight_length, order
 
-    def _spatial_extension(self, num_stride=4, norm_scale=1):
+    def _spatial_extension(self, num_stride=4):
         order = 2
         weight_length = 4
+        norm_scale = num_stride * 4
+
         indices = []
         values = []
 
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(1, num_stride):
+            for stride in range(num_stride):
                 dist = math.exp((- stride ** 2 / (num_stride ** 2))) / norm_scale
                 top = self._shift(rank, stride, 'top')
                 bottom = self._shift(rank, stride, 'bottom')
@@ -306,13 +309,14 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         return indices, values, weight_length, order
 
-    def _spatial_extension_augment(self, num_stride=4, norm_scale=1):
-        indices, values, weight_length, order = self._spatial_extension(num_stride, norm_scale)
+    def _spatial_extension_augment(self, num_stride=4):
+        indices, values, weight_length, order = self._spatial_extension(num_stride)
 
+        norm_scale = num_stride * 4
         dist = 1 / norm_scale
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(1, num_stride):
+            for stride in range(num_stride):
                 top = self._shift(rank, stride, 'top')
                 bottom = self._shift(rank, stride, 'bottom')
                 left = self._shift(rank, stride, 'left')
@@ -339,21 +343,23 @@ class SpatialAggregationVectorEncoding(nn.Module):
         weight_length = weight_length + num_stride * 4
         return indices, values, weight_length, order
 
-    def _spatial_hilbert(self, curve_iteration=2, norm_scale=1):
+    def _spatial_hilbert(self, curve_iteration=2):
         order = 1
         weight_length = 8
-        indices = []
-        values = []
 
         locs_top = curves.hilbertCurve(curve_iteration, rotation='topReverse')
         locs_bottom = curves.hilbertCurve(curve_iteration, rotation='bottomReverse')
         locs_left = curves.hilbertCurve(curve_iteration, rotation='left')
         locs_right = curves.hilbertCurve(curve_iteration, rotation='right')
         curve_length = len(locs_top)
+        norm_scale = curve_length * 4
+
+        indices = []
+        values = []
 
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(1, curve_length):
+            for stride in range(curve_length):
                 dist = ((curve_length - stride) / curve_length) / norm_scale
                 dist_revise = (stride / curve_length) / norm_scale
 
@@ -394,19 +400,20 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         return indices, values, weight_length, order
 
-    def _spatial_hilbert_augment(self, curve_iteration=2, norm_scale=1):
-        indices, values, weight_length, order = self._spatial_hilbert(curve_iteration, norm_scale)
+    def _spatial_hilbert_augment(self, curve_iteration=2):
+        indices, values, weight_length, order = self._spatial_hilbert(curve_iteration)
 
         locs_top = curves.hilbertCurve(curve_iteration, rotation='topReverse')
         locs_bottom = curves.hilbertCurve(curve_iteration, rotation='bottomReverse')
         locs_left = curves.hilbertCurve(curve_iteration, rotation='left')
         locs_right = curves.hilbertCurve(curve_iteration, rotation='right')
         curve_length = len(locs_top)
+        norm_scale = curve_length * 4
 
         dist = 1 / norm_scale
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for stride in range(1, curve_length):
+            for stride in range(curve_length):
                 top_h = h + locs_top[stride][1] - locs_top[0][1]
                 top_w = w + locs_top[stride][0] - locs_top[0][0]
                 left_h = h + locs_left[stride][1] - locs_left[0][1]
@@ -450,17 +457,17 @@ class SpatialAggregationVectorEncoding(nn.Module):
                 B, N, L, C = x.shape
                 if self.separable:
                     x = x.permute(0, 2, 1, 3).reshape(B, L, N * C).contiguous()
-                    skip_vectors = x[:, 0: self.skip, :]
+                    cls_vectors = x[:, :self.skip, :]
                     img_vectors = x[:, self.skip:, :]
                     img_vectors = self.aggregation(img_vectors)
-                    x = torch.cat((skip_vectors, img_vectors), dim=1)
+                    x = torch.cat([cls_vectors, img_vectors], dim=1)
                     x = x.reshape(B, L, N, C).permute(0, 2, 1, 3).contiguous()
                 else:
                     x = x.reshape(B * N, L, C).contiguous()
-                    skip_vectors = x[:, 0: self.skip, :]
+                    cls_vectors = x[:, :self.skip, :]
                     img_vectors = x[:, self.skip:, :]
                     img_vectors = self.aggregation(img_vectors)
-                    x = torch.cat((skip_vectors, img_vectors), dim=1)
+                    x = torch.cat([cls_vectors, img_vectors], dim=1)
                     x = x.reshape(B, N, L, C).contiguous()
             else:
                 x = self.aggregation(x)
@@ -519,7 +526,5 @@ if __name__ == "__main__":
         agg_mat[i, i] = -1
 
     print(agg_mat[46].reshape((14, 14)))
-    print('\n')
-    print(agg_mat[135].reshape((14, 14)))
 
 
