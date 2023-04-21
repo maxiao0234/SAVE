@@ -313,7 +313,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
     def _spatial_extension(self, step_length=4):
         order = 2
         num_direction = 4
-        num_entry = step_length // 2
+        num_entry = step_length - 1
 
         # norm_scale = sum([math.exp((- stride ** 2 / (num_stride ** 2))) for stride in range(num_stride)])
         norm_scale = 1
@@ -323,9 +323,9 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for step in range(step_length):
+            for step in range(1, step_length):
                 dist = math.exp((- step ** 2 / (step_length ** 2))) / norm_scale
-                step_entry = int(step * (num_entry / step_length))
+                step_entry = step - 1
 
                 top = self._shift(rank, step, 'top')
                 bottom = self._shift(rank, step, 'bottom')
@@ -366,7 +366,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for step in range(curve_length):
+            for step in range(1, curve_length):
                 dist = ((curve_length - step) / curve_length) / norm_scale
                 dist_revise = (step / curve_length) / norm_scale
                 step_entry = int(step * (num_entry / curve_length))
