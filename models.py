@@ -349,7 +349,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
     def _spatial_hilbert(self, curve_iteration=2):
         order = 1
-        num_direction = 4
+        num_direction = 8
         curve_length = 4 ** curve_iteration
         num_entry = curve_length // 4
 
@@ -390,8 +390,8 @@ class SpatialAggregationVectorEncoding(nn.Module):
                     values.append(dist)
                     indices.append([rank, top, 1, step_entry])
                     values.append(dist_revise)
-                if self.hw_shape[0] > bottom_h >= 0 and self.hw_shape[1] > bottom_w >= 0:
-                    indices.append([rank, bottom, 1, step_entry])
+                if self.hw_shape[0] > bottom_h >= 4 and self.hw_shape[1] > bottom_w >= 0:
+                    indices.append([rank, bottom, 5, step_entry])
                     values.append(dist)
                     indices.append([rank, bottom, 0, step_entry])
                     values.append(dist_revise)
@@ -401,9 +401,9 @@ class SpatialAggregationVectorEncoding(nn.Module):
                     indices.append([rank, left, 3, step_entry])
                     values.append(dist_revise)
                 if self.hw_shape[0] > right_h >= 0 and self.hw_shape[1] > right_w >= 0:
-                    indices.append([rank, right, 3, step_entry])
+                    indices.append([rank, right, 6, step_entry])
                     values.append(dist)
-                    indices.append([rank, right, 2, step_entry])
+                    indices.append([rank, right, 7, step_entry])
                     values.append(dist_revise)
 
         return indices, values, order, num_direction, num_entry
