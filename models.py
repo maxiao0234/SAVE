@@ -513,11 +513,6 @@ def save_deit_b16_224(pretrained=False, **kwargs):
 
 
 if __name__ == "__main__":
-    import argparse
-    from main import get_args_parser
-
-    parser = argparse.ArgumentParser('DeiT training and evaluation script', parents=[get_args_parser()])
-    args = parser.parse_args()
     Model = save_deit_t16_224()
     Model.eval()
     n_parameters = sum(p.numel() for p in Model.parameters() if p.requires_grad)
