@@ -512,7 +512,7 @@ if __name__ == "__main__":
     n_parameters = sum(p.numel() for p in Model.parameters() if p.requires_grad)
     print(f'Number of params: {n_parameters} ({n_parameters / (1024 * 1024):.2f}M)')
 
-    x = torch.rand((2, 3, 224, 224))
+    x = torch.rand((1, 3, 224, 224))
     out = Model(x)
     print(out.shape)
 
