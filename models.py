@@ -284,8 +284,8 @@ class SpatialAggregationVectorEncoding(nn.Module):
     def _spatial_sequence(self, step_length=8):
         order = 1
         num_direction = 1
-        num_entry = step_length * 2
 
+        # norm_scale = step_length * 2
         norm_scale = 1
 
         indices = []
@@ -297,13 +297,13 @@ class SpatialAggregationVectorEncoding(nn.Module):
                 left = self._shift(rank, step, 'left')
                 right = self._shift(rank, step, 'right')
                 if self._if_agg(left):
-                    indices.append([rank, left, 0, step])
+                    indices.append([rank, left, step])
                     values.append(dist)
                 if self._if_agg(right):
-                    indices.append([rank, right, 0, step + step_length])
+                    indices.append([rank, right, step + step_length])
                     values.append(dist)
 
-        return indices, values, order, num_direction, num_entry
+        return indices, values, order, num_direction
 
     def _spatial_extension(self, step_length=4):
         order = 2
