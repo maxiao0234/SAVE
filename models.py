@@ -33,7 +33,7 @@ class SAVEConfig:
     Mode Options: ['sequence', 'extension', 'hilbert']
     Param Options: ['single', 'composite', 'mlp']
     """
-    ABS = False
+    ABS = True
     Vectors = 'qkv'
     Mode = 'extension'
     Param = 'mlp'
@@ -516,12 +516,12 @@ if __name__ == "__main__":
     out = Model(x)
     print(out.shape)
 
-    spatial_paras = torch.ones((Model.sa_abs_e.num_direction * Model.sa_abs_e.num_entry)).float()
+    spatial_paras = torch.ones(Model.sa_abs_e.num_direction).float()
     spatial_table = Model.sa_abs_e.spatial_table
     agg_mat = torch.einsum('p q a, a -> p q', spatial_table, spatial_paras).numpy()
 
-    # for i in range(14 * 14):
-    #     agg_mat[i, i] = -1
+    for i in range(14 * 14):
+        agg_mat[i, i] = -1
 
     print(np.around(agg_mat[60].reshape((14, 14)), 1))
 
