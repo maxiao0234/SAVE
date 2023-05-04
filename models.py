@@ -342,8 +342,9 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
     def _spatial_hilbert(self, curve_iteration=2):
         order = 1
-        num_direction = 8
+        num_points = 2 ** curve_iteration + 1
         curve_length = 4 ** curve_iteration
+        num_direction = 4 * num_points
 
         # norm_scale = curve_length / 2
         norm_scale = 1
@@ -358,9 +359,12 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         for rank in range(self.length):
             h, w = self._rank2pos(rank)
-            for step in range(1, curve_length):
-                dist = ((curve_length - step) / curve_length) / norm_scale
-                dist_revise = (step / curve_length) / norm_scale
+            # for step in range(1, curve_length):
+            for step in range(curve_length):
+                interpolation = (step * (num_points - 1)) / curve_length
+                start = int(interpolation)
+                dist = (interpolation - start) / norm_scale
+                dist_revise = (1 - dist) / norm_scale
 
                 top_h = h + locs_top[step][1] - locs_top[0][1]
                 top_w = w + locs_top[step][0] - locs_top[0][0]
@@ -377,38 +381,38 @@ class SpatialAggregationVectorEncoding(nn.Module):
                 right = right_h * self.hw_shape[1] + right_w
 
                 if self.hw_shape[0] > top_h >= 0 and self.hw_shape[1] > top_w >= 0:
-                    indices.append([rank, top, 0])
+                    indices.append([rank, top, num_points * 0 + start])
                     values.append(dist)
-                    indices.append([rank, top, 1])
+                    indices.append([rank, top, num_points * 0 + start + 1])
                     values.append(dist_revise)
                 if self.hw_shape[0] > bottom_h >= 0 and self.hw_shape[1] > bottom_w >= 0:
-                    indices.append([rank, bottom, 2])
+                    indices.append([rank, bottom, num_points * 1 + start])
                     values.append(dist)
-                    indices.append([rank, bottom, 3])
+                    indices.append([rank, bottom, num_points * 1 + start + 1])
                     values.append(dist_revise)
                 if self.hw_shape[0] > left_h >= 0 and self.hw_shape[1] > left_w >= 0:
-                    indices.append([rank, left, 4])
+                    indices.append([rank, left, num_points * 2 + start])
                     values.append(dist)
-                    indices.append([rank, left, 5])
+                    indices.append([rank, left, num_points * 2 + start + 1])
                     values.append(dist_revise)
                 if self.hw_shape[0] > right_h >= 0 and self.hw_shape[1] > right_w >= 0:
-                    indices.append([rank, right, 6])
+                    indices.append([rank, right, num_points * 3 + start])
                     values.append(dist)
-                    indices.append([rank, right, 7])
+                    indices.append([rank, right, num_points * 3 + start + 1])
                     values.append(dist_revise)
 
         return indices, values, order, num_direction
 
     def _init_parameters_single(self):
         for i in range(self.order):
-            param = nn.Parameter(torch.zeros(1, self.num_direction, self.num_heads, self.head_dim))
+            param = nn.Parameter(torch.zeros(1, self.head_dim, self.num_direction, self.num_heads))
             setattr(self, f'spatial_parameters_{i}', param)
             nn.init.kaiming_uniform_(getattr(self, f'spatial_parameters_{i}'), a=math.sqrt(5))
 
     def _init_parameters_composite(self):
         self._init_parameters_single()
         for i in range(self.order):
-            param_pos = nn.Parameter(torch.zeros(4, 1, self.num_heads, self.head_dim))
+            param_pos = nn.Parameter(torch.zeros(4, self.head_dim, 1, self.num_heads))
             setattr(self, f'spatial_parameters_pos_{i}', param_pos)
             trunc_normal_(getattr(self, f'spatial_parameters_pos_{i}'), std=.02)
         coordinates = self._get_coordinates()
@@ -419,9 +423,9 @@ class SpatialAggregationVectorEncoding(nn.Module):
         d = 4
         for i in range(self.order):
             setattr(self, f'w_1_{i}', nn.Parameter(torch.ones(4, d, self.num_direction, self.num_heads)))
-            setattr(self, f'w_2_{i}', nn.Parameter(torch.ones(d, self.num_direction, self.num_heads, self.head_dim)))
-            setattr(self, f'b_1_{i}', nn.Parameter(torch.ones(1, 1, self.num_heads)))
-            setattr(self, f'b_2_{i}', nn.Parameter(torch.ones(1, 1, self.num_heads, 1)))
+            setattr(self, f'w_2_{i}', nn.Parameter(torch.ones(d, self.head_dim, self.num_direction, self.num_heads)))
+            setattr(self, f'b_1_{i}', nn.Parameter(torch.ones(1, 1, self.num_direction, self.num_heads)))
+            setattr(self, f'b_2_{i}', nn.Parameter(torch.ones(1, 1, self.num_direction, self.num_heads)))
             setattr(self, f'act_{i}', nn.ReLU())
             nn.init.kaiming_uniform_(getattr(self, f'w_1_{i}'), a=math.sqrt(5))
             nn.init.kaiming_uniform_(getattr(self, f'w_2_{i}'), a=math.sqrt(5))
@@ -437,7 +441,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
     def _get_parameters_composite(self, order):
         param = getattr(self, f'spatial_parameters_pos_{order}')
-        param = torch.einsum('p i, i a n c -> p a n c', self.coordinates, param)
+        param = torch.einsum('p i, i c a n -> p c a n', self.coordinates, param)
 
         param = param + self._get_parameters_single(order)
         return param
@@ -451,7 +455,7 @@ class SpatialAggregationVectorEncoding(nn.Module):
 
         param = torch.einsum('p i, i d a n -> p d a n', self.coordinates, w_1) + b_1
         param = act(param)
-        param = torch.einsum('p d a n, d a n c -> p a n c', param, w_2) + b_2
+        param = torch.einsum('p d a n, d c a n -> p c a n', param, w_2) + b_2
 
         # param = param + self._get_parameters_single(order)
         return param
@@ -460,9 +464,8 @@ class SpatialAggregationVectorEncoding(nn.Module):
         for i in range(self.order):
             param = getattr(self, f"_get_parameters_{SAVEConfig.Param}")(i)
             if self.num_heads == 1:
-                B, N, L, C = x.shape
-                param = param.expand(-1, -1, N, -1)
-            trans_mat = torch.einsum('p q a, p a n c -> p q n c', self.spatial_table, param) + self.anchor
+                param = param.expand(-1, -1, -1, x.shape[1])
+            trans_mat = torch.einsum('p q a, p c a n -> p q n c', self.spatial_table, param) + self.anchor
             x = torch.einsum('p q n c, b n q c -> b n p c', trans_mat, x)
         return x
 
@@ -524,6 +527,5 @@ if __name__ == "__main__":
         agg_mat[i, i] = -1
 
     print(np.around(agg_mat[60].reshape((14, 14)), 1))
-
 
 
