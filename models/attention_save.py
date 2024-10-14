@@ -136,7 +136,8 @@ class SpatialAggregationVectorEncoding(nn.Module):
         return indices, values, order, num_direction
 
     def build_spatial_extension(self):
-        curve_length = self.hw_shape[0]
+        # curve_length = self.hw_shape[0]
+        curve_length = 4
         num_points = 4
         num_nodes = 4 * num_points
         # norm_scale = curve_length
