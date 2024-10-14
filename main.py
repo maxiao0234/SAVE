@@ -21,9 +21,8 @@ from datasets import build_dataset
 from engine import train_one_epoch, evaluate
 from losses import DistillationLoss
 from samplers import RASampler
-from augment import new_data_aug_generator
 
-import models
+from models import SAVEConfig
 
 import utils
 
@@ -50,6 +49,12 @@ def get_args_parser():
     parser.set_defaults(model_ema=True)
     parser.add_argument('--model-ema-decay', type=float, default=0.99996, help='')
     parser.add_argument('--model-ema-force-cpu', action='store_true', default=False, help='')
+
+    # SAEV parameters
+    parser.add_argument('--save-abs', type=bool, default=False, help='')
+    parser.add_argument('--save-vectors', type=str, default='qkv', help='')
+    parser.add_argument('--save-mode', type=str, default='extension', help='')
+    parser.add_argument('--save-param', type=str, default='base', help='')
 
     # Optimizer parameters
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
@@ -255,14 +260,19 @@ def main(args):
             label_smoothing=args.smoothing, num_classes=args.nb_classes)
 
     print(f"Creating model: {args.model}")
+    save_cfg = SAVEConfig
+    save_cfg.abs = args.save_abs
+    save_cfg.vectors = args.save_vectors
+    save_cfg.mode = args.save_mode
+    save_cfg.param = args.save_param
     model = create_model(
         args.model,
         pretrained=False,
+        save_cfg=save_cfg,
         num_classes=args.nb_classes,
         drop_rate=args.drop,
         drop_path_rate=args.drop_path,
         drop_block_rate=None,
-        img_size=args.input_size
     )
 
                     
