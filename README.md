@@ -10,12 +10,12 @@ This implementation is based on the [Deit](https://github.com/facebookresearch/d
 ```
 # An example for training on 8 GPUs:
 python -m torch.distributed.launch --nproc_per_node=8 --use_env main.py \
-  --batch-size=64 \
-  --data-set=IMNET \
-  --model=save_deit_t16_224 \
-  --save-vectors=qkv \
-  --save-mode=hervert \
-  --save-param=base
+--batch-size=64 \
+--data-set=IMNET \
+--model=save_deit_t16_224 \
+--save-vectors=qkv \
+--save-mode=hervert \
+--save-param=base
 ```
 
 To modify the SAVE configurations, go to `models.py`.
