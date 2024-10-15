@@ -3,8 +3,8 @@
 Spatial Aggregation Vector Encoding (SAVE) is a method for establishing spatial information for vectors (elements of input tokens, queries, keys, or values) in vision transformers. It can be plug-and-play in vectors, even with other position encoding methods. It aggregates part of surrounding vectors with spatial contextual connections by establishing two-dimensional relationships.This repository contains pytorch supported code and configuration of the proposed aggregation encoding for vision transformers:
 
 <p align="left">
-  <img src=figs/fig-2.png height=200 style=margin-right: 10px />
-  <img src=figs/fig-1.png height=200 /> 
+  <img src=figs/fig-2.png height=300 style=margin-right: 30px />
+  <img src=figs/fig-1.png height=300 /> 
 </p>
 
 ## Classification
