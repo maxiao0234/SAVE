@@ -7,7 +7,9 @@ Spatial Aggregation Vector Encoding (SAVE) is a method for establishing spatial 
   <img src="figs/fig-2.png" height=325>
 </p>
 
-## Classification
+## Vertical Extension Mode
+
+### Training
 This implementation is based on the [Deit](https://github.com/facebookresearch/deit) backbone.
 
 ```
@@ -17,14 +19,11 @@ python -m torch.distributed.launch --nproc_per_node=8 --use_env main.py \
 --data-set=IMNET \
 --model=save_deit_t16_224 \
 --save-vectors=qkv \
---save-mode=hervert \
+--save-mode=extension \
 --save-param=base
 ```
 
-To modify the SAVE configurations, go to `models.py`.
-
-## Visualization for one anchor of extention mode
-
+### Visualization for one anchor of extention mode
 We provide an example in this section
 
 ```
@@ -50,6 +49,22 @@ Print the Gaussian kernel of Vertical Extension mode at a specific position:
  [ 0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0.   0. ]]
 ```
 where the `-1.` indicates the anchor, and the others are kept to one decimal place. 
+
+## Hilbert Curves Mode
+
+### Training
+This implementation is based on the [Deit](https://github.com/facebookresearch/deit) backbone.
+
+```
+# An example for training on 8 GPUs:
+python -m torch.distributed.launch --nproc_per_node=8 --use_env main.py \
+--batch-size=64 \
+--data-set=IMNET \
+--model=save_deit_t16_224 \
+--save-vectors=qkv \
+--save-mode=hilbert \
+--save-param=base
+```
 
 ## Citing
 - TO DO
