@@ -9,7 +9,11 @@ Spatial Aggregation Vector Encoding (SAVE) is a method for establishing spatial 
 
 ## Vertical Extension Mode
 
-### Training
+The vertical extension mode with an anchor vector (marked as a red pentagram). Consider all vectors that extend in the same row and column centered on the anchor vector. Lighter colors indicate greater distance. (a) The aggregation is applied once to the vectors with the top, bottom, left, and right directions. (b) The vectors with the four vertical directions are superimposed twice for aggregation.
+
+<img src="figs/fig-5.png" height=325>
+
+### Training with Extension Mode
 This implementation is based on the [Deit](https://github.com/facebookresearch/deit) backbone.
 
 ```
@@ -52,8 +56,11 @@ where the `-1.` indicates the anchor, and the others are kept to one decimal pla
 
 ## Hilbert Curves Mode
 
-### Training
-This implementation is based on the [Deit](https://github.com/facebookresearch/deit) backbone.
+The Hilbert curve mode with an anchor vector (marked as a red pentagram). The arrows start and end by connecting two adjacent vectors in order. (a) Sequential representation of the vectors for one anchor aggregated in a single region. (b) Representation of vectors of four regions aggregated by one anchor.
+
+<img src="figs/fig-6.png" height=325>
+
+### Training with Hilbert Mode
 
 ```
 # An example for training on 8 GPUs:
