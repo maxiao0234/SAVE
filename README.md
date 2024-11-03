@@ -74,4 +74,14 @@ python -m torch.distributed.launch --nproc_per_node=8 --use_env main.py \
 ```
 
 ## Citing
-- TO DO
+If this project is help for you, please cite it.
+```
+@article{ma2024save,
+  title={SAVE: Encoding spatial interactions for vision transformers},
+  author={Ma, Xiao and Zhang, Zetian and Yu, Rong and Ji, Zexuan and Li, Mingchao and Zhang, Yuhan and Chen, Qiang},
+  journal={Image and Vision Computing},
+  pages={105312},
+  year={2024},
+  publisher={Elsevier}
+}
+```
